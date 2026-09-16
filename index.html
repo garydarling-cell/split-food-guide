@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Split Food Guide</title>
+<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<style>
+  :root{
+    --bg:#0b1220; --panel:#131c2e; --panel-solid:#0f1728; --line:rgba(255,255,255,0.10);
+    --ink:#eef3fb; --muted:#a7b4c8; --dim:#7688a0; --accent:#34d399; --gold:#fbbf24;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;overscroll-behavior:none;}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;}
+
+  header{flex:0 0 auto;padding:10px 14px calc(10px + env(safe-area-inset-top,0px));
+    padding-top:calc(10px + env(safe-area-inset-top,0px));
+    background:var(--panel-solid);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:10px;z-index:5;}
+  header .titles{flex:1;min-width:0;}
+  header h1{font-size:16px;margin:0;font-weight:700;white-space:nowrap;}
+  header .sub{font-size:12px;color:var(--muted);margin-top:1px;}
+  header .toggles{display:flex;gap:6px;flex:0 0 auto;}
+  header button.pill{background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--muted);
+    border-radius:999px;padding:6px 10px;font-size:12px;font-weight:600;}
+  header button.pill.active{background:rgba(52,211,153,.16);border-color:rgba(52,211,153,.5);color:var(--accent);}
+  header button.pill.gold{background:rgba(251,191,36,.14);border-color:rgba(251,191,36,.5);color:var(--gold);}
+
+  .intro{flex:0 0 auto;padding:10px 14px;background:rgba(251,191,36,.08);border-bottom:1px solid var(--line);
+    font-size:12.5px;color:var(--ink);line-height:1.5;}
+  .intro b{color:var(--gold);}
+
+  #map{flex:1 1 auto;position:relative;width:100%;}
+
+  .pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+    background:var(--accent);border:2px solid #06281c;box-shadow:0 2px 6px rgba(0,0,0,.4);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;}
+  .pin .ic{transform:rotate(45deg);font-size:14px;line-height:1;}
+  .pin.sel{background:#60a5fa;border-color:#1e3a63;}
+  .pin.booker{background:var(--gold);border-color:#7c4a03;}
+  .pin.booker.sel{background:#60a5fa;border-color:#1e3a63;}
+  .pin.office{width:38px;height:38px;background:#f43f5e;border-color:#4c0519;z-index:9;}
+  .pin.office .ic{font-size:17px;}
+  .pin.office.sel{background:#60a5fa;border-color:#1e3a63;}
+
+  .pin-label{background:rgba(11,18,32,.88);color:var(--ink);font-size:11px;font-weight:600;
+    padding:2px 7px;border-radius:6px;white-space:nowrap;cursor:pointer;
+    border:1px solid var(--line);box-shadow:0 1px 3px rgba(0,0,0,.3);
+    max-width:150px;overflow:hidden;text-overflow:ellipsis;
+    display:none;pointer-events:none;}
+  #map.show-labels .pin-label{display:block;pointer-events:auto;}
+  .pin-label.booker{border-color:rgba(251,191,36,.6);}
+  .pin-label.sel{background:rgba(96,165,250,.92);color:#071226;border-color:#1e3a63;font-weight:700;}
+  .pin-label.office{display:block;pointer-events:auto;background:rgba(244,63,94,.9);color:#2a0209;font-weight:700;}
+  .pin-label.office.sel{background:rgba(96,165,250,.92);color:#071226;}
+
+  .maplibregl-ctrl-attrib{font-size:10px;}
+
+  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:20;
+    background:var(--panel);border-top:1px solid var(--line);
+    border-radius:16px 16px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.4);
+    padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));
+    transform:translateY(110%);transition:transform .22s ease;max-height:62vh;overflow-y:auto;}
+  #sheet.open{transform:translateY(0);}
+  #sheet .grab{width:36px;height:4px;background:var(--line);border-radius:3px;margin:0 auto 12px;}
+  #sheet .cat{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--dim);font-weight:700;}
+  #sheet h2{font-size:19px;margin:2px 0 6px;}
+  #sheet .booker-badge{display:inline-block;background:rgba(251,191,36,.16);border:1px solid rgba(251,191,36,.5);
+    color:var(--gold);font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;margin-bottom:10px;}
+  #sheet .row{display:grid;grid-template-columns:88px 1fr;gap:6px 10px;font-size:13px;margin-bottom:6px;align-items:center;}
+  #sheet .row .k{color:var(--dim);font-size:11px;letter-spacing:.03em;text-transform:uppercase;}
+  #sheet .stars{color:#fbbf24;letter-spacing:1px;}
+  #sheet .src{color:var(--muted);font-size:12px;margin-left:6px;}
+  .dots{display:inline-flex;gap:4px;}
+  .dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.14);}
+  .dot.fill.auth{background:#34d399;}
+  .dot.fill.heal{background:#38bdf8;}
+  #sheet .addr{color:var(--muted);font-size:13px;margin-top:2px;}
+  #sheet .btnrow{display:flex;gap:10px;margin-top:14px;}
+  #sheet .btn{flex:1;text-align:center;padding:11px 10px;border-radius:10px;font-weight:700;font-size:14px;
+    text-decoration:none;border:1px solid var(--line);color:var(--ink);background:rgba(255,255,255,.05);}
+  #sheet .btn.primary{background:rgba(52,211,153,.16);border-color:rgba(52,211,153,.5);color:var(--accent);}
+  #sheet .close{position:absolute;top:10px;right:12px;background:none;border:none;color:var(--dim);font-size:20px;padding:4px 8px;}
+  #sheet .dishlist{list-style:none;margin:0;padding:0;}
+  #sheet .dishlist li{padding:8px 0;border-bottom:1px solid var(--line);font-size:14px;}
+  #sheet .dishlist li:last-child{border-bottom:none;}
+  #sheet .dishlist b{color:var(--gold);}
+  #sheet .dishnote{color:var(--muted);font-size:12.5px;margin-top:10px;line-height:1.5;}
+
+  #scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:15;opacity:0;pointer-events:none;transition:opacity .22s ease;}
+  #scrim.show{opacity:1;pointer-events:auto;}
+
+  .maplibregl-popup{display:none !important;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="titles">
+      <h1>🍽️ Split Food Guide</h1>
+      <div class="sub" id="subline">41 spots + 📍 office · tap a pin</div>
+    </div>
+    <div class="toggles">
+      <button class="pill gold" id="btnDishes">Must-try dishes</button>
+      <button class="pill active" id="btnStreets">Streets</button>
+      <button class="pill" id="btnSat">Satellite</button>
+    </div>
+  </header>
+  <div class="intro">
+    Centered on <b>Booker Travel's Old Town office</b>. Gold pins are <b>Booker Travel's own recommendations</b>.
+    Her #1 tip: <b>skip the Riva promenade</b> (Obala Hrvatskog narodnog preporoda) for eating — it's priced for
+    passing tourist traffic, not for a good meal. Those spots have been left off this map on her advice.
+  </div>
+  <div id="map"></div>
+</div>
+
+<div id="scrim"></div>
+<div id="sheet">
+  <button class="close" id="sheetClose">✕</button>
+  <div class="grab"></div>
+  <div id="sheetBody"></div>
+</div>
+
+<script>
+const RESTAURANTS = [
+  {"slug": "konoba-fetivi", "name": "Konoba Fetivi", "category": "Local Favorites", "addr": "Tomića Stine 4, Split", "c": [16.4344, 43.5083], "rating": 4.6, "ratingSource": "Google; also 4.5 on Tripadvisor (2,015 reviews) — Michelin Bib Gourmand", "price": 2, "authenticity": 5, "healthy": 3, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5083,16.4344&travelmode=walking"},
+  {"slug": "uje-oil-bar", "name": "Uje Oil Bar", "category": "Local Favorites", "addr": "Dominisova 3, Split", "c": [16.4397, 43.5083], "rating": 4.3, "ratingSource": "Google; also 4.3 on Tripadvisor (1,509 reviews)", "price": 2, "authenticity": 3, "healthy": 3, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5083,16.4397&travelmode=walking"},
+  {"slug": "bacvice-beach", "name": "Bačvice Beach", "category": "Local Favorites", "addr": "Bačvice, Split", "c": [16.4451, 43.5033], "rating": 4.5, "ratingSource": "Google (Caffe Bar Žbirac, the recommended anchor venue) — other Bačvice venues rate far lower", "price": 1, "authenticity": 3, "healthy": 2, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5033,16.4451&travelmode=walking"},
+  {"slug": "konoba-more", "name": "Konoba More", "category": "Local Favorites", "addr": "Poljička cesta 22, Split", "c": [16.4597172, 43.5054573], "rating": 4.4, "ratingSource": "Google, 1,526 reviews", "price": 3, "authenticity": 5, "healthy": 3, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5054573,16.4597172&travelmode=walking"},
+  {"slug": "restaurant-opatija", "name": "Restaurant Opatija", "category": "Local Favorites", "addr": "Fausta Vrančića 1, Split", "c": [16.4620334, 43.5120579], "rating": 4.5, "ratingSource": "Google, 931 reviews", "price": 2, "authenticity": 5, "healthy": 2, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5120579,16.4620334&travelmode=walking"},
+  {"slug": "duje", "name": "Duje", "category": "Local Favorites", "addr": "Slobode ul. 16/A, Split", "c": [16.4504861, 43.5099662], "rating": 4.8, "ratingSource": "Google, 3,578 reviews", "price": 3, "authenticity": 4, "healthy": 3, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5099662,16.4504861&travelmode=walking"},
+  {"slug": "soul-kitchen", "name": "Soul Kitchen", "category": "Local Favorites", "addr": "prilaz braće Kaliterna 8, Split", "c": [16.4458695, 43.5029606], "rating": 4.8, "ratingSource": "Google, 1,472 reviews", "price": 3, "authenticity": 2, "healthy": 5, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5029606,16.4458695&travelmode=walking"},
+  {"slug": "the-fat-boar", "name": "The Fat Boar", "category": "Local Favorites", "addr": "Ul. Matice hrvatske 44, Split", "c": [16.4575681, 43.5084601], "rating": 4.6, "ratingSource": "Google, 882 reviews", "price": 1, "authenticity": 1, "healthy": 1, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5084601,16.4575681&travelmode=walking"},
+  {"slug": "nevera-tavern", "name": "Nevera Tavern", "category": "Local Favorites", "addr": "Put Firula 17, Split", "c": [16.4527445, 43.5014524], "rating": 4.6, "ratingSource": "Google, 1,996 reviews", "price": 2, "authenticity": 4, "healthy": 3, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5014524,16.4527445&travelmode=walking"},
+  {"slug": "restoran-triton", "name": "Restoran Triton", "category": "Local Favorites", "addr": "Put Trstenika 19, Split (inside the Radisson Blu Resort & Spa)", "c": [16.47003, 43.5028218], "rating": 4.9, "ratingSource": "Google, 157 reviews", "price": 4, "authenticity": 4, "healthy": 3, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5028218,16.47003&travelmode=walking"},
+  {"slug": "restoran-laf", "name": "Restoran Laf!", "category": "Local Favorites", "addr": "Mažuranićevo šetalište 10, Split", "c": [16.4462395, 43.5133147], "rating": 4.8, "ratingSource": "Google, 1,429 reviews", "price": 2, "authenticity": 3, "healthy": 2, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5133147,16.4462395&travelmode=walking"},
+  {"slug": "matoni", "name": "Matoni (Konoba Ma:Toni)", "category": "Local Favorites", "addr": "prilaz braće Kaliterna 6, Split", "c": [16.4458385, 43.503105], "rating": 4.6, "ratingSource": "Google, 1,577 reviews", "price": 3, "authenticity": 3, "healthy": 3, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.503105,16.4458385&travelmode=walking"},
+  {"slug": "restoran-allora", "name": "Restoran Allora", "category": "Local Favorites", "addr": "Poljička cesta 28a, Split", "c": [16.4645714, 43.506033], "rating": 4.7, "ratingSource": "Google, 499 reviews", "price": 2, "authenticity": 2, "healthy": 4, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.506033,16.4645714&travelmode=walking"},
+  {"slug": "dvor", "name": "Dvor", "category": "Local Favorites", "addr": "Put Firula 14, Split", "c": [16.453855, 43.5011348], "rating": 4.6, "ratingSource": "Google, 2,990 reviews — Michelin Guide + Gault&Millau", "price": 4, "authenticity": 3, "healthy": 4, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5011348,16.453855&travelmode=walking"},
+  {"slug": "kod-joze", "name": "Konoba Kod Joze", "category": "Local Favorites", "addr": "Sredmanuška ul. 4, Split", "c": [16.4419311, 43.510297], "rating": 4.2, "ratingSource": "Google, 1,682 reviews", "price": 2, "authenticity": 5, "healthy": 3, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.510297,16.4419311&travelmode=walking"},
+  {"slug": "villa-spiza", "name": "Villa Spiza", "category": "Local Favorites", "addr": "Ul. Petra Kružića 3, Split", "c": [16.4393503, 43.5095019], "rating": 4.7, "ratingSource": "Google, 2,242 reviews", "price": 3, "authenticity": 5, "healthy": 4, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5095019,16.4393503&travelmode=walking"},
+  {"slug": "feel-green", "name": "Feel Green", "category": "Local Favorites", "addr": "Ban Mladenova 1, Split", "c": [16.4347854, 43.5086049], "rating": 4.5, "ratingSource": "Google, 4.5/5", "price": 2, "authenticity": 2, "healthy": 5, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5086049,16.4347854&travelmode=walking"},
+  {"slug": "konoba-varos", "name": "Konoba Varoš", "category": "Local Favorites", "addr": "Ban Mladenova 9, Split", "c": [16.4352675, 43.5089547], "rating": 3.9, "ratingSource": "Tripadvisor, 836 reviews", "price": 3, "authenticity": 4, "healthy": 3, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5089547,16.4352675&travelmode=walking"},
+  {"slug": "konoba-marjan", "name": "Konoba Marjan", "category": "Local Favorites", "addr": "Senjska 1, Split", "c": [16.4342809, 43.5083942], "rating": 4.5, "ratingSource": "Tripadvisor, 2,134 reviews", "price": 3, "authenticity": 4, "healthy": 3, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5083942,16.4342809&travelmode=walking"},
+  {"slug": "konoba-matejuska", "name": "Konoba Matejuška", "category": "Local Favorites", "addr": "Tomića Stine 3, Split", "c": [16.4344067, 43.5082535], "rating": 4.4, "ratingSource": "Tripadvisor, 485 reviews", "price": 3, "authenticity": 4, "healthy": 3, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5082535,16.4344067&travelmode=walking"},
+  {"slug": "ciri-biri-bela", "name": "Ćiri Biri Bela", "category": "Breakfast", "addr": "Plinarska ul. 6, Split", "c": [16.4359, 43.5111], "rating": 4.9, "ratingSource": "Tripadvisor, #11 of 618 restaurants in Split", "price": 2, "authenticity": 3, "healthy": 5, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5111,16.4359&travelmode=walking"},
+  {"slug": "mokosh", "name": "Mokosh", "category": "Lunch/Dinner", "addr": "Slavićeva ul. 44, Split", "c": [16.4406, 43.5142], "rating": 4.9, "ratingSource": "Tripadvisor", "price": 4, "authenticity": 2, "healthy": 3, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5142,16.4406&travelmode=walking"},
+  {"slug": "kats-kitchen", "name": "Kat's Kitchen Brunch Club", "category": "Breakfast", "addr": "Antuna Mihanovića 33, Split", "c": [16.4224, 43.506], "rating": 4.8, "ratingSource": "Tripadvisor, #25 of 584 restaurants in Split", "price": 2, "authenticity": 1, "healthy": 5, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.506,16.4224&travelmode=walking"},
+  {"slug": "croque-madame", "name": "Croque Madame", "category": "Breakfast", "addr": "Ul. Hrvatske Mornarice 1, Split", "c": [16.4357, 43.5182], "rating": 4.1, "ratingSource": "Tripadvisor, #372 of 603 restaurants in Split", "price": 2, "authenticity": 1, "healthy": 3, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5182,16.4357&travelmode=walking"},
+  {"slug": "nostromo", "name": "Nostromo", "category": "Lunch/Dinner — Seafood", "addr": "Kraj Svete Marije 10, Split", "c": [16.4373, 43.5093], "rating": 4.0, "ratingSource": "Tripadvisor, #114 of 618 restaurants in Split", "price": 4, "authenticity": 4, "healthy": 4, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5093,16.4373&travelmode=walking"},
+  {"slug": "zlatna-ribica", "name": "Zlatna Ribica", "category": "Lunch/Dinner — Seafood", "addr": "Kraj Svete Marije 8, Split", "c": [16.4374, 43.5093], "rating": 4.4, "ratingSource": "Tripadvisor #63/603; Google 4.6", "price": 1, "authenticity": 4, "healthy": 2, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5093,16.4374&travelmode=walking"},
+  {"slug": "sug", "name": "Restoran Šug", "category": "Lunch/Dinner", "addr": "Tolstojeva 1, Split", "c": [16.4432, 43.5093], "rating": 4.5, "ratingSource": "Tripadvisor #84/619 — Michelin Bib Gourmand", "price": 3, "authenticity": 4, "healthy": 3, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5093,16.4432&travelmode=walking"},
+  {"slug": "sette-sorelle", "name": "Sette Sorelle", "category": "Pizza", "addr": "Trg Franje Tuđmana 3, Split", "c": [16.4356, 43.5086], "rating": 4.9, "ratingSource": "Tripadvisor, #2 of 618 restaurants in Split", "price": 2, "authenticity": 2, "healthy": 2, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5086,16.4356&travelmode=walking"},
+  {"slug": "bakra", "name": "Bakra Steak & Pizza Bar", "category": "Pizza", "addr": "Ulica svetog Petra starog 2, Split", "c": [16.4432, 43.5062], "rating": 4.6, "ratingSource": "Tripadvisor, #76 of 614 restaurants in Split", "price": 3, "authenticity": 2, "healthy": 2, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5062,16.4432&travelmode=walking"},
+  {"slug": "bokamorra", "name": "Bokamorra", "category": "Pizza", "addr": "Trumbićeva obala 16, Split", "c": [16.4324, 43.5069], "rating": 4.6, "ratingSource": "Tripadvisor, #52 of 618 restaurants in Split", "price": 3, "authenticity": 1, "healthy": 2, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5069,16.4324&travelmode=walking"},
+  {"slug": "basta", "name": "Basta Gourmet Bar", "category": "Pizza", "addr": "Obala Kneza Branimira 1A, Split", "c": [16.4318, 43.506], "rating": 4.5, "ratingSource": "Tripadvisor, #77 of 619 restaurants in Split", "price": 3, "authenticity": 2, "healthy": 2, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.506,16.4318&travelmode=walking"},
+  {"slug": "kod-fife", "name": "Konoba Kod Fife", "category": "Traditional Dalmatian", "addr": "Trumbićeva obala 11, Split", "c": [16.4338, 43.5076], "rating": 0, "ratingSource": "Mixed reviews — long-running local institution, generous portions, inconsistent quality reported", "price": 1, "authenticity": 5, "healthy": 2, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5076,16.4338&travelmode=walking"},
+  {"slug": "delistes", "name": "DeListes", "category": "Traditional Dalmatian", "addr": "Obrov ulica 8, Split", "c": [16.4376, 43.5094], "rating": 4.6, "ratingSource": "Tripadvisor, #42 of 582 restaurants in Split", "price": 3, "authenticity": 5, "healthy": 3, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5094,16.4376&travelmode=walking"},
+  {"slug": "corto-maltese", "name": "Corto Maltese Freestyle Food", "category": "Lunch/Dinner", "addr": "Obrov 7, Split", "c": [16.4375, 43.5093], "rating": 4.5, "ratingSource": "Tripadvisor, #52 of 620 restaurants in Split", "price": 3, "authenticity": 3, "healthy": 3, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5093,16.4375&travelmode=walking"},
+  {"slug": "pandoras-box", "name": "Pandora's Box (Pandora Greenbox)", "category": "Vegetarian/Vegan", "addr": "Obrov ul. 4, Split", "c": [16.4376, 43.5092], "rating": 4.6, "ratingSource": "Tripadvisor, #46 of 615 restaurants in Split", "price": 2, "authenticity": 1, "healthy": 5, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5092,16.4376&travelmode=walking"},
+  {"slug": "gelateria-emiliana", "name": "Gelateria Emiliana", "category": "Ice Cream", "addr": "Pistura ul. 1, Split", "c": [16.4386, 43.5097], "rating": 4.7, "ratingSource": "Tripadvisor, #41 of 618 restaurants in Split", "price": 2, "authenticity": 2, "healthy": 1, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5097,16.4386&travelmode=walking"},
+  {"slug": "amare", "name": "Gelateria aMare", "category": "Ice Cream", "addr": "Trg braće Radić 5, Split", "c": [16.4384, 43.5084], "rating": 5.0, "ratingSource": "Tripadvisor, #16 of 596 restaurants in Split", "price": 2, "authenticity": 2, "healthy": 1, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5084,16.4384&travelmode=walking"},
+  {"slug": "pumparela", "name": "Pumparela Gelateria", "category": "Ice Cream", "addr": "Poljana Kraljice Jelene 2, Split", "c": [16.4411, 43.5082], "rating": 4.6, "ratingSource": "Tripadvisor, #105 of 596 restaurants in Split", "price": 2, "authenticity": 2, "healthy": 1, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5082,16.4411&travelmode=walking"},
+  {"slug": "flag-pub", "name": "The Flag Pub", "category": "Pubs", "addr": "Ul. Domovinskog rata, Split", "c": [16.4439, 43.515], "rating": 4.5, "ratingSource": "Tripadvisor; Google 4.8/5 (548 reviews)", "price": 2, "authenticity": 1, "healthy": 1, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.515,16.4439&travelmode=walking"},
+  {"slug": "harats", "name": "Harat's Irish Pub", "category": "Pubs", "addr": "Tončićeva 2, Split", "c": [16.437, 43.51], "rating": 2.3, "ratingSource": "Tripadvisor — poor, see caution note", "price": 2, "authenticity": 1, "healthy": 1, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.51,16.437&travelmode=walking"},
+  {"slug": "little-beer-shop", "name": "Little Beer Shop", "category": "Pubs", "addr": "Trumbićeva obala 17, Split", "c": [16.4341, 43.5079], "rating": 0, "ratingSource": "No aggregate score found — strongly positive qualitative reviews (large Croatian + international craft beer selection)", "price": 2, "authenticity": 3, "healthy": 1, "booker": true, "navUrl": "https://www.google.com/maps/dir/?api=1&destination=43.5079,16.4341&travelmode=walking"}
+];
+
+const OFFICE = {
+  name: "Booker Travel — Old Town Office",
+  addr: "Marulićeva 4, 21000 Split, Croatia",
+  c: [16.4390384, 43.5083742],
+  navUrl: "https://www.google.com/maps/dir/?api=1&destination=43.5083742,16.4390384&travelmode=walking"
+};
+
+const MUST_TRY_DISHES = [
+  {name:"Soparnik", note:"Swiss-chard pie — a Dalmatian specialty that most restaurants don't actually serve. Find it at the green market (Pazar) in the morning instead."},
+  {name:"Pašticada", note:"Slow-braised beef in a sweet-savory wine sauce, usually served with gnocchi."},
+  {name:"Hobotnica ispod peke", note:"Octopus slow-cooked under a traditional bell-shaped lid (peka) with vegetables — usually needs ordering ahead."},
+  {name:"Gregada", note:"A lighter Dalmatian fish stew with potato, onion and white wine."},
+  {name:"Brudet / Brujet", note:"The classic Dalmatian fish stew, usually served over polenta."}
+];
+
+const STREETS_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+const SAT_STYLE = {
+  version:8,
+  sources:{
+    sat:{type:"raster",tileSize:256,
+      tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"]},
+    ref:{type:"raster",tileSize:256,
+      tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"]}
+  },
+  layers:[{id:"sat",type:"raster",source:"sat"},{id:"ref",type:"raster",source:"ref",paint:{"raster-opacity":0.9}}]
+};
+
+const map = new maplibregl.Map({
+  container:'map', style:STREETS_STYLE, center:OFFICE.c, zoom:15, minZoom:12,
+  attributionControl:true, dragRotate:false, pitchWithRotate:false, maxZoom:19
+});
+map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'bottom-right');
+map.addControl(new maplibregl.GeolocateControl({
+  positionOptions:{enableHighAccuracy:true}, trackUserLocation:true, showUserHeading:true
+}), 'bottom-right');
+
+let usingSat = false;
+document.getElementById('btnStreets').addEventListener('click', ()=>setStyle(false));
+document.getElementById('btnSat').addEventListener('click', ()=>setStyle(true));
+function setStyle(sat){
+  usingSat = sat;
+  document.getElementById('btnStreets').classList.toggle('active', !sat);
+  document.getElementById('btnSat').classList.toggle('active', sat);
+  map.setStyle(sat ? SAT_STYLE : STREETS_STYLE);
+}
+
+const priceStr = p => '€'.repeat(p) + '<span style="opacity:.25">' + '€'.repeat(4-p) + '</span>';
+const starStr = r => {
+  const full = Math.round(r);
+  return '★'.repeat(full) + '☆'.repeat(5-full);
+};
+const dotsRow = (n, cls) => {
+  let out = '';
+  for(let i=1;i<=5;i++) out += `<span class="dot ${i<=n?'fill '+cls:''}"></span>`;
+  return `<span class="dots">${out}</span>`;
+};
+
+let markers = {}, selectedEl = null, selectedLabelEl = null;
+const LABEL_MIN_ZOOM = 15.3;
+
+function buildMarkers(){
+  RESTAURANTS.forEach(r=>{
+    const el = document.createElement('div');
+    el.className = 'pin' + (r.booker ? ' booker' : '');
+    el.innerHTML = '<div class="ic">' + (r.booker ? '⭐' : '🍽️') + '</div>';
+    el.addEventListener('click', e=>{ e.stopPropagation(); openSheet(r, el); });
+    const m = new maplibregl.Marker({element:el, anchor:'bottom'}).setLngLat(r.c).addTo(map);
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'pin-label' + (r.booker ? ' booker' : '');
+    labelEl.textContent = (r.booker ? '⭐ ' : '') + r.name;
+    labelEl.addEventListener('click', e=>{ e.stopPropagation(); openSheet(r, el); });
+    new maplibregl.Marker({element:labelEl, anchor:'top', offset:[0,3]}).setLngLat(r.c).addTo(map);
+
+    markers[r.slug] = {marker:m, el, labelEl};
+  });
+
+  const oEl = document.createElement('div');
+  oEl.className = 'pin office';
+  oEl.title = OFFICE.name;
+  oEl.innerHTML = '<div class="ic">📍</div>';
+  oEl.addEventListener('click', e=>{ e.stopPropagation(); openOfficeSheet(oEl); });
+  new maplibregl.Marker({element:oEl, anchor:'bottom'}).setLngLat(OFFICE.c).addTo(map);
+
+  const oLabelEl = document.createElement('div');
+  oLabelEl.className = 'pin-label office';
+  oLabelEl.textContent = OFFICE.name;
+  oLabelEl.addEventListener('click', e=>{ e.stopPropagation(); openOfficeSheet(oEl); });
+  new maplibregl.Marker({element:oLabelEl, anchor:'top', offset:[0,3]}).setLngLat(OFFICE.c).addTo(map);
+
+  markers.__office = {el:oEl, labelEl:oLabelEl};
+
+  updateLabelVisibility();
+  map.on('zoom', updateLabelVisibility);
+}
+map.on('load', buildMarkers);
+
+function updateLabelVisibility(){
+  document.getElementById('map').classList.toggle('show-labels', map.getZoom() >= LABEL_MIN_ZOOM);
+}
+
+function openSheet(r, el){
+  if(selectedEl) selectedEl.classList.remove('sel');
+  if(selectedLabelEl) selectedLabelEl.classList.remove('sel');
+  el.classList.add('sel');
+  selectedEl = el;
+  selectedLabelEl = markers[r.slug] ? markers[r.slug].labelEl : null;
+  if(selectedLabelEl) selectedLabelEl.classList.add('sel');
+
+  document.getElementById('sheetBody').innerHTML = `
+    <div class="cat">${r.category}</div>
+    <h2>${r.name}</h2>
+    ${r.booker ? '<div class="booker-badge">⭐ Booker Travel recommended</div>' : ''}
+    <div class="row"><div class="k">Rating</div><div>${r.rating ? `<span class="stars">${starStr(r.rating)}</span> ${r.rating}` : '<span class="src">not independently rated</span>'}<span class="src">${r.ratingSource}</span></div></div>
+    <div class="row"><div class="k">Price</div><div>${priceStr(r.price)}</div></div>
+    <div class="row"><div class="k">Authentic</div><div>${dotsRow(r.authenticity,'auth')}</div></div>
+    <div class="row"><div class="k">Healthy</div><div>${dotsRow(r.healthy,'heal')}</div></div>
+    <div class="addr">📍 ${r.addr}</div>
+    <div class="btnrow">
+      <a class="btn primary" href="${r.navUrl}" target="_blank" rel="noopener">Directions</a>
+    </div>
+  `;
+  document.getElementById('sheet').classList.add('open');
+  document.getElementById('scrim').classList.add('show');
+  map.flyTo({center:r.c, zoom:Math.max(map.getZoom(),16), duration:500});
+}
+function openOfficeSheet(el){
+  if(selectedEl) selectedEl.classList.remove('sel');
+  if(selectedLabelEl) selectedLabelEl.classList.remove('sel');
+  el.classList.add('sel');
+  selectedEl = el;
+  selectedLabelEl = markers.__office ? markers.__office.labelEl : null;
+  if(selectedLabelEl) selectedLabelEl.classList.add('sel');
+
+  document.getElementById('sheetBody').innerHTML = `
+    <div class="cat">Tour meeting point</div>
+    <h2>📍 ${OFFICE.name}</h2>
+    <div class="addr">📍 ${OFFICE.addr}</div>
+    <div class="btnrow">
+      <a class="btn primary" href="${OFFICE.navUrl}" target="_blank" rel="noopener">Directions</a>
+    </div>
+  `;
+  document.getElementById('sheet').classList.add('open');
+  document.getElementById('scrim').classList.add('show');
+  map.flyTo({center:OFFICE.c, zoom:Math.max(map.getZoom(),16), duration:500});
+}
+function openDishesSheet(){
+  if(selectedEl){ selectedEl.classList.remove('sel'); selectedEl=null; }
+  if(selectedLabelEl){ selectedLabelEl.classList.remove('sel'); selectedLabelEl=null; }
+
+  const items = MUST_TRY_DISHES.map(d => `<li><b>${d.name}</b> — ${d.note}</li>`).join('');
+  document.getElementById('sheetBody').innerHTML = `
+    <div class="cat">Booker Travel's recommendations</div>
+    <h2>🍴 Must-try dishes</h2>
+    <ul class="dishlist">${items}</ul>
+    <div class="dishnote">These are dishes to look for on a menu, not specific restaurants — several of the pins on this map (especially the traditional Dalmatian ones) serve most of them.</div>
+  `;
+  document.getElementById('sheet').classList.add('open');
+  document.getElementById('scrim').classList.add('show');
+}
+document.getElementById('btnDishes').addEventListener('click', e=>{ e.stopPropagation(); openDishesSheet(); });
+
+function closeSheet(){
+  document.getElementById('sheet').classList.remove('open');
+  document.getElementById('scrim').classList.remove('show');
+  if(selectedEl){ selectedEl.classList.remove('sel'); selectedEl = null; }
+  if(selectedLabelEl){ selectedLabelEl.classList.remove('sel'); selectedLabelEl = null; }
+}
+document.getElementById('sheetClose').addEventListener('click', closeSheet);
+document.getElementById('scrim').addEventListener('click', closeSheet);
+map.on('click', closeSheet);
+</script>
+</body>
+</html>
