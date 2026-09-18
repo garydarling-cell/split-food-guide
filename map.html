@@ -32,25 +32,19 @@
     font-size:11.5px;color:var(--muted);line-height:1.4;}
   .banner b{color:#60a5fa;}
   #map{flex:1 1 auto;position:relative;width:100%;}
-  .pin{width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
-    background:var(--accent);border:2px solid #06281c;box-shadow:0 2px 6px rgba(0,0,0,.4);
-    display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;}
-  .pin .ic{transform:rotate(45deg);font-size:14px;line-height:1;}
-  .pin.sel{background:#60a5fa;border-color:#1e3a63;}
-  .pin.booker{background:var(--gold);border-color:#7c4a03;}
-  .pin.booker.sel{background:#60a5fa;border-color:#1e3a63;}
-  .pin.office{width:38px;height:38px;background:#f43f5e;border-color:#4c0519;z-index:9;}
-  .pin.office .ic{font-size:17px;}
+  .pin.office{width:34px;height:34px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+    background:#f43f5e;border:2px solid #4c0519;box-shadow:0 2px 6px rgba(0,0,0,.4);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;z-index:9;}
+  .pin.office .ic{transform:rotate(45deg);font-size:15px;line-height:1;}
   .pin.office.sel{background:#60a5fa;border-color:#1e3a63;}
-  .pin-label{background:rgba(11,18,32,.88);color:var(--ink);font-size:11px;font-weight:600;
-    padding:2px 7px;border-radius:6px;white-space:nowrap;cursor:pointer;
-    border:1px solid var(--line);box-shadow:0 1px 3px rgba(0,0,0,.3);
-    max-width:150px;overflow:hidden;text-overflow:ellipsis;
-    display:none;pointer-events:none;}
-  #map.show-labels .pin-label{display:block;pointer-events:auto;}
+  .pin-label{background:rgba(11,18,32,.92);color:var(--ink);font-size:12px;font-weight:600;
+    padding:4px 9px;border-radius:7px;white-space:nowrap;cursor:pointer;
+    border:1px solid var(--line);box-shadow:0 1px 4px rgba(0,0,0,.4);
+    max-width:170px;overflow:hidden;text-overflow:ellipsis;
+    display:block;pointer-events:auto;}
   .pin-label.booker{border-color:rgba(251,191,36,.6);}
   .pin-label.sel{background:rgba(96,165,250,.92);color:#071226;border-color:#1e3a63;font-weight:700;}
-  .pin-label.office{display:block;pointer-events:auto;background:rgba(244,63,94,.9);color:#2a0209;font-weight:700;}
+  .pin-label.office{background:rgba(244,63,94,.92);color:#2a0209;font-weight:700;}
   .pin-label.office.sel{background:rgba(96,165,250,.92);color:#071226;}
   .maplibregl-ctrl-attrib{font-size:10px;}
   #sheet{position:fixed;left:0;right:0;bottom:0;z-index:20;
@@ -220,23 +214,16 @@ const dotsRow = (n, cls) => {
 };
 
 let markers = {}, selectedEl = null, selectedLabelEl = null;
-const LABEL_MIN_ZOOM = 15.3;
 
 function buildMarkers(){
   RESTAURANTS.forEach(r=>{
-    const el = document.createElement('div');
-    el.className = 'pin' + (r.booker ? ' booker' : '');
-    el.innerHTML = '<div class="ic">' + (r.booker ? '⭐' : '🍽️') + '</div>';
-    el.addEventListener('click', e=>{ e.stopPropagation(); openSheet(r, el); });
-    new maplibregl.Marker({element:el, anchor:'bottom'}).setLngLat(r.c).addTo(map);
-
     const labelEl = document.createElement('div');
     labelEl.className = 'pin-label' + (r.booker ? ' booker' : '');
     labelEl.textContent = (r.booker ? '⭐ ' : '') + r.name;
-    labelEl.addEventListener('click', e=>{ e.stopPropagation(); openSheet(r, el); });
-    new maplibregl.Marker({element:labelEl, anchor:'top', offset:[0,3]}).setLngLat(r.c).addTo(map);
+    labelEl.addEventListener('click', e=>{ e.stopPropagation(); openSheet(r, labelEl); });
+    new maplibregl.Marker({element:labelEl, anchor:'bottom'}).setLngLat(r.c).addTo(map);
 
-    markers[r.slug] = {el, labelEl};
+    markers[r.slug] = {labelEl};
   });
 
   const oEl = document.createElement('div');
@@ -250,18 +237,11 @@ function buildMarkers(){
   oLabelEl.className = 'pin-label office';
   oLabelEl.textContent = OFFICE.name;
   oLabelEl.addEventListener('click', e=>{ e.stopPropagation(); openOfficeSheet(oEl); });
-  new maplibregl.Marker({element:oLabelEl, anchor:'top', offset:[0,3]}).setLngLat(OFFICE.c).addTo(map);
+  new maplibregl.Marker({element:oLabelEl, anchor:'top', offset:[0,20]}).setLngLat(OFFICE.c).addTo(map);
 
   markers.__office = {el:oEl, labelEl:oLabelEl};
-
-  updateLabelVisibility();
-  map.on('zoom', updateLabelVisibility);
 }
 map.on('load', buildMarkers);
-
-function updateLabelVisibility(){
-  document.getElementById('map').classList.toggle('show-labels', map.getZoom() >= LABEL_MIN_ZOOM);
-}
 
 function openSheet(r, el){
   if(selectedEl) selectedEl.classList.remove('sel');
